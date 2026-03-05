@@ -259,6 +259,12 @@ class family_handler:
 
         if model_def.get("ltx2_pipeline", "") != "distilled":
             pipe = { "pipe": pipe, "loras" : ["text_embedding_projection", "text_embeddings_connector"] }
+        else:
+            # Distilled: keep transformer on GPU (no per-step shuttle). INT8 ~19 GB; 20GB leaves headroom.
+            pipe = {
+                "pipe": pipe,
+                "budgets": {"transformer": 20_000, "text_encoder": 100, "*": 3000},
+            }
 
         return ltx2_model, pipe
 

@@ -3476,15 +3476,18 @@ def init_pipe(pipe, kwargs, profile):
 
     kwargs["extraModelsToQuantize"]=  None
     if profile in (2, 4, 5):
-        default_transformer_budget = default_transformer2_budget= kwargs.get("budgets", 100) 
-        if isinstance(default_transformer_budget, dict):
-            default_transformer_budget = default_transformer_budget.get("transformer", 100) 
-            default_transformer2_budget = default_transformer2_budget.get("transformer2", 100) 
+        if kwargs.get("budgets") is not None and isinstance(kwargs.get("budgets"), dict):
+            pass
+        else:
+            default_transformer_budget = default_transformer2_budget= kwargs.get("budgets", 100) 
+            if isinstance(default_transformer_budget, dict):
+                default_transformer_budget = default_transformer_budget.get("transformer", 100) 
+                default_transformer2_budget = default_transformer2_budget.get("transformer2", 100) 
 
-        budgets = { "transformer" : default_transformer_budget if preload  == 0 else preload, "text_encoder" : 100 if preload  == 0 else preload, "*" : max(1000 if profile==5 else 3000 , preload) }
-        if "transformer2" in pipe:
-            budgets["transformer2"] = default_transformer2_budget if preload  == 0 else preload
-        kwargs["budgets"] = budgets
+            budgets = { "transformer" : default_transformer_budget if preload  == 0 else preload, "text_encoder" : 100 if preload  == 0 else preload, "*" : max(1000 if profile==5 else 3000 , preload) }
+            if "transformer2" in pipe:
+                budgets["transformer2"] = default_transformer2_budget if preload  == 0 else preload
+            kwargs["budgets"] = budgets
     elif profile == 3:
         kwargs["budgets"] = { "*" : "70%" }
 
