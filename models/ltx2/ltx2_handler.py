@@ -269,6 +269,42 @@ class family_handler:
         return ltx2_model, pipe
 
     @staticmethod
+    def build_offloadobj(pipe):
+        """
+        Build mmgp offload object from the pipe returned by load_model().
+        Use the result in generate(..., offloadobj=offloadobj) to reduce peak VRAM.
+        """
+        from mmgp import offload
+        kwargs = {}
+        if isinstance(pipe, dict) and "pipe" in pipe:
+            kwargs = dict(pipe)
+            pipe = kwargs.pop("pipe")
+        if "coTenantsMap" not in kwargs:
+            kwargs["coTenantsMap"] = {}
+        loras = list(kwargs.pop("loras", []))
+        if isinstance(pipe, dict):
+            if pipe.get("transformer"):
+                loras.append("transformer")
+            if pipe.get("transformer2"):
+                loras.append("transformer2")
+        offloadobj = offload.profile(
+            pipe,
+            profile_no=4,
+            compile="",
+            quantizeTransformer=False,
+            loras=loras,
+            convertWeightsFloatTo=torch.bfloat16,
+            **kwargs,
+        )
+        from shared.attention import get_supported_attention_modes
+        supported = get_supported_attention_modes()
+        for preferred in ("sage2", "sage"):
+            if preferred in supported:
+                offload.shared_state["_attention"] = preferred
+                break
+        return offloadobj
+
+    @staticmethod
     def fix_settings(base_model_type, settings_version, model_def, ui_defaults):
         pipeline_kind = model_def.get("ltx2_pipeline", "two_stage")
         if pipeline_kind != "distilled" and ui_defaults.get("guidance_phases", 0) < 2:
