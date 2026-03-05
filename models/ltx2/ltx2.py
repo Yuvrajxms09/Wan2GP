@@ -4,6 +4,7 @@ import os
 import types
 from typing import Callable, Iterator
 
+import numpy as np
 import torch
 import torchaudio
 from accelerate import init_empty_weights
@@ -44,6 +45,16 @@ _DEFAULT_MAX_FRAMES = 121
 _GEMMA_FOLDER = "gemma-3-12b-it-qat-q4_0-unquantized"
 _SPATIAL_UPSCALER_FILENAME = "ltx-2-spatial-upscaler-x2-1.0.safetensors"
 LTX2_USE_FP32_ROPE_FREQS = True #False
+
+
+def _normalize_audio_waveform(waveform):
+    """Return waveform as (channels, samples) float32. Accepts 1D, (samples, channels), or (channels, samples)."""
+    x = np.asarray(waveform, dtype=np.float32)
+    if x.ndim == 1:
+        x = x[np.newaxis, :]
+    elif x.ndim == 2 and x.shape[1] <= x.shape[0]:
+        x = x.T
+    return np.ascontiguousarray(x)
 
 
 def frame_num_from_audio(
@@ -690,6 +701,9 @@ class LTX2:
 
         input_waveform = kwargs.get("input_waveform")
         input_waveform_sample_rate = kwargs.get("input_waveform_sample_rate")
+        if input_waveform is not None:
+            input_waveform = _normalize_audio_waveform(input_waveform)
+            kwargs["input_waveform"] = input_waveform
         if frame_num is None:
             if input_waveform is not None and input_waveform_sample_rate is not None:
                 min_frames = int(self.model_def.get("frames_minimum", _DEFAULT_MIN_FRAMES))
