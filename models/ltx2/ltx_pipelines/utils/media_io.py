@@ -359,6 +359,53 @@ def encode_video(
     container.close()
 
 
+def save_ltx2_result(
+    result: dict,
+    output_path: str,
+    fps: int = 24,
+) -> None:
+    """
+    Write LTX2 generate() result dict to an MP4 (video + audio if present).
+    Same encoding path as the pipeline CLI; use this from Python API callers.
+    Accepts result["x"] as (B, C, F, H, W) or (C, F, H, W); result["audio"] as
+    (channels, samples) or (samples, channels); mono is upmixed to stereo.
+    """
+    if result is None:
+        raise ValueError("result is None")
+    video = result.get("x")
+    if video is None:
+        raise ValueError("result has no 'x' (video)")
+    if video.ndim == 4:
+        video = video.unsqueeze(0)
+    v = video[0].permute(1, 2, 3, 0)
+    if v.dtype != torch.uint8:
+        v = v.float().clamp(-1.0, 1.0).mul(127.5).add(128).clamp(0, 255).byte()
+    audio_np = result.get("audio")
+    audio_sr = result.get("audio_sampling_rate", 48000)
+    audio_t = None
+    if audio_np is not None:
+        n_elems = audio_np.numel() if torch.is_tensor(audio_np) else np.size(audio_np)
+        if n_elems > 0:
+            if torch.is_tensor(audio_np):
+                audio_t = audio_np.detach().float().cpu()
+            else:
+                audio_t = torch.from_numpy(np.asarray(audio_np, dtype=np.float32)).float()
+            if audio_t.ndim == 1:
+                audio_t = audio_t.unsqueeze(0)
+            if audio_t.ndim == 2 and audio_t.shape[1] <= audio_t.shape[0]:
+                audio_t = audio_t.T
+            if audio_t.shape[0] == 1:
+                audio_t = audio_t.repeat(2, 1)
+    encode_video(
+        video=v,
+        fps=int(fps),
+        audio=audio_t,
+        audio_sample_rate=int(audio_sr) if audio_t is not None else None,
+        output_path=output_path,
+        video_chunks_number=1,
+    )
+
+
 def decode_audio_from_file(path: str, device: torch.device) -> torch.Tensor | None:
     container = av.open(path)
     try:
