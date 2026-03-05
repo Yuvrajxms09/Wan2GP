@@ -37,10 +37,37 @@ from .ltx_pipelines.distilled import DistilledPipeline
 from .ltx_pipelines.ti2vid_two_stages import TI2VidTwoStagesPipeline
 from .ltx_pipelines.utils.constants import AUDIO_SAMPLE_RATE, DEFAULT_NEGATIVE_PROMPT
 
+_LATENT_STRIDE = 8
+_DEFAULT_MIN_FRAMES = 17
+_DEFAULT_MAX_FRAMES = 121
 
 _GEMMA_FOLDER = "gemma-3-12b-it-qat-q4_0-unquantized"
 _SPATIAL_UPSCALER_FILENAME = "ltx-2-spatial-upscaler-x2-1.0.safetensors"
 LTX2_USE_FP32_ROPE_FREQS = True #False
+
+
+def frame_num_from_audio(
+    waveform,
+    sample_rate: float,
+    fps: float,
+    *,
+    latent_stride: int = _LATENT_STRIDE,
+    min_frames: int = _DEFAULT_MIN_FRAMES,
+    max_frames: int = _DEFAULT_MAX_FRAMES,
+) -> int:
+    """
+    Compute output frame count from audio duration, respecting LTX2's (8*K + 1) rule.
+    Duration is taken as min(audio_duration, max_frames/fps); result is clamped to [min_frames, max_frames].
+    """
+    if hasattr(waveform, "shape"):
+        n_samples = waveform.shape[-1] if waveform.ndim >= 2 else waveform.shape[0]
+    else:
+        n_samples = len(waveform)
+    duration_sec = float(n_samples) / float(sample_rate)
+    frames_float = duration_sec * fps
+    frames_int = max(1, min(int(round(frames_float)), max_frames))
+    n = (frames_int // latent_stride) * latent_stride + 1
+    return max(min_frames, min(n, max_frames))
 
 
 def _normalize_config(config_value):
@@ -646,7 +673,7 @@ class LTX2:
         sampling_steps: int = 40,
         guide_scale: float = 4.0,
         alt_guide_scale: float = 1.0,
-        frame_num: int = 121,
+        frame_num: int | None = None,
         height: int = 1024,
         width: int = 1536,
         fps: float = 24.0,
@@ -660,6 +687,24 @@ class LTX2:
 
         image_start = _coerce_image_list(image_start)
         image_end = _coerce_image_list(image_end)
+
+        input_waveform = kwargs.get("input_waveform")
+        input_waveform_sample_rate = kwargs.get("input_waveform_sample_rate")
+        if frame_num is None:
+            if input_waveform is not None and input_waveform_sample_rate is not None:
+                min_frames = int(self.model_def.get("frames_minimum", _DEFAULT_MIN_FRAMES))
+                max_frames = int(kwargs.get("max_frames") or self.model_def.get("frames_max", _DEFAULT_MAX_FRAMES))
+                frame_num = frame_num_from_audio(
+                    input_waveform,
+                    float(input_waveform_sample_rate),
+                    float(fps),
+                    latent_stride=_LATENT_STRIDE,
+                    min_frames=min_frames,
+                    max_frames=max_frames,
+                )
+            else:
+                frame_num = _DEFAULT_MAX_FRAMES
+        frame_num = int(frame_num)
 
         input_video = kwargs.get("input_video")
         prefix_frames_count = int(kwargs.get("prefix_frames_count") or 0)
