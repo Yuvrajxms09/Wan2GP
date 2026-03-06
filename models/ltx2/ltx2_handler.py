@@ -260,10 +260,10 @@ class family_handler:
         if model_def.get("ltx2_pipeline", "") != "distilled":
             pipe = { "pipe": pipe, "loras" : ["text_embedding_projection", "text_embeddings_connector"] }
         else:
-            # Distilled: keep transformer on GPU (no per-step shuttle). INT8 ~19 GB; 20GB leaves headroom.
+            # Distilled: no offloading — all components stay on GPU. Sizes: transformer ~18.3 GiB, text_encoder ~12.3 GiB, rest ~6 GiB.
             pipe = {
                 "pipe": pipe,
-                "budgets": {"transformer": 20_000, "text_encoder": 100, "*": 3000},
+                "budgets": {"transformer": 20_000, "text_encoder": 14_000, "*": 8_000},
             }
 
         return ltx2_model, pipe
